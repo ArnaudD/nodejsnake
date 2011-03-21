@@ -1,6 +1,7 @@
 
 function njSnakeLoad () {
   var libs = [
+      'http://localhost:8080/socket.io/socket.io.js',
       'https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js',
       'http://github.com/DmitryBaranovskiy/raphael/raw/master/raphael-min.js',
       '../nodejsnake.js'
