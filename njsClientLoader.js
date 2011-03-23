@@ -4,7 +4,7 @@ function njSnakeLoad () {
       'http://localhost:8080/socket.io/socket.io.js',
       'https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js',
       'http://github.com/DmitryBaranovskiy/raphael/raw/master/raphael-min.js',
-      '../nodejsnake.js'
+      '../njsClient.js'
   ];
 
   for (i in libs) {
@@ -12,7 +12,7 @@ function njSnakeLoad () {
   }
 
 
-  document.head.innerHTML += '<link rel="stylesheet" type="text/css" href="../nodejsnake.css" />';
+  document.head.innerHTML += '<link rel="stylesheet" type="text/css" href="../njs.css" />';
 }
 
 (function() {
