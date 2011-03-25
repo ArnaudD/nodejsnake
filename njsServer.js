@@ -22,10 +22,33 @@ var playersCount = 1; // TODO find something more elegant !
  *
  *
  */
-var Grid = function (width, height) {
+var Grid = function () {
+  this.width  = 0;
+  this.height = 0;
+  this.map    = [];
+};
+
+Grid.prototype.init = function (width, height) {
   this.width  = width;
   this.height = height;
-  this.map    = {};
+
+  for (var x=0; x<this.width; x++){
+    this.map [x] = [];
+    for (var y=0; y<this.height; y++)
+      this.map [x][y] = null;
+  }
+};
+
+Grid.prototype.isFree = function (x, y) {
+  return (this.map[x][y] == null);
+};
+
+Grid.prototype.set = function (x, y, player) {
+  this.map[x][y] = player;
+};
+
+Grid.prototype.unset = function (x, y) {
+  this.map[x][y] = null;
 };
 
 /**
@@ -37,35 +60,35 @@ var Game = function (host) {
   this.host    = host;
   this.players = [];
   this.speed   = 200;
-  this.grid    = null;
+  this.grid    = new Grid ();
   this.loop    = null;
 
   console.log ('Yeah, new game at '+this.host);
 };
 
-// TODO : create a broadcast method !
-
 Game.prototype.addPlayer = function (player) {
-  this.players.append (player);
+  this.players.push (player);
 
-  this.players.forEach(function (p) {
-    p.client.send ({
-      id: player.id,
-      name: player.name
-    });
-  });
+  this.broadcast ({addPlayer: {
+    id: player.id,
+    name: player.name
+  }});
 
   // Let's start immediately the game, TEMPORARY
   this.start();
 };
 
 Game.prototype.deletePlayer = function (client) {
+  var playerId = this.players[client.sessionId].id;
+
   if (this.players[client.sessionId]) {
     delete this.players[client.sessionId];
   }
 
   if (this.players.length == 0)
     clearInterval (this.loop);
+  else
+    this.broadcast({deletePlayer: playerId});
 };
 
 Game.prototype.start = function () {
@@ -73,33 +96,101 @@ Game.prototype.start = function () {
   var width = 999999, height = 999999;
   this.players.forEach(function (player) {
     if (player.resolution.height < height)
-      width = player.resolution.height;
+      height = player.resolution.height;
     if (player.resolution.width < width)
       width = player.resolution.width;
   });
 
   // TODO : check if the grid size isn't too small
 
-  // Announce the game is about to start !
+  // Initialize the grid
+  this.grid.init (width, height);
+
+  // Put everyone on the grid
+  var i = 1;
+  var spaceBetweenSnakes = Math.floor(width / (this.players.length + 1));
   this.players.forEach(function (player) {
-    player.announceGame ({resolution: {width: width, height: height}});
+    player.init (i * spaceBetweenSnakes, Math.floor(height/ 2));
+    i++;
   });
+  // TODO : broadcast positions
+
+  // Announce the game is about to start !
+  this.broadcast({getReady: {resolution: {width: width, height: height}}});
 
   // TODO set countdown !
 
-  // Initialize the grid
-  this.grid = new Grid (width, height);
-  this.loop = setInterval (this.movePlayers(), this.speed);
+  // launch the main loop
+  var self = this;
+  this.loop = setInterval (function () {self.movePlayers();}, this.speed);
 };
 
 Game.prototype.movePlayers = function () {
+  var updates = [];
+  var self = this;
+
+  // Let's move the tail of each player first
   this.players.forEach (function (player) {
-    player.move();
-    // TODO send direction of all players
-
-
-    // TODO Update grid
+    var move = player.moveTail (self.grid);
+    if (move)
+      updates.push (move);
   });
+
+  // Then move their head
+  this.players.forEach (function (player) {
+    var nextMove = player.getNextMoveCoordinate ();
+    if (self.grid.isFree (nextMove.x, nextMove.y))
+      updates.push (player.moveHead(nextMove));
+  });
+
+  // Send direction to everyone in the game
+  this.broadcast ({update: updates});
+};
+
+Game.prototype.broadcast = function (message) {
+  this.players.forEach (function (player) {
+    player.client.send (message);
+  });
+};
+
+
+/**
+ * Snake model
+ *
+ *
+ */
+var Snake = function (game) {
+  this.nodes     = [];
+  this.direction = 'N';
+  this.size      = 10;
+  this.game      = game;
+
+};
+
+Snake.prototype.getNextMoveCoordinate = function () {
+  var x = this.nodes[this.nodes.length - 1].x ;
+  var y = this.nodes[this.nodes.length - 1].y ;
+  switch (this.direction) {
+    case 'S': y++; break;
+    case 'N': y--; break;
+    case 'E': x++; break;
+    case 'W': x--; break;
+  }
+
+  if (x >= this.game.grid.width)  x = 0;
+  if (x < 0)                      x = this.game.grid.width - 1;
+  if (y >= this.game.grid.height) y = 0;
+  if (y < 0)                      y = this.game.grid.height - 1;
+
+  return {x: x, y: y};
+};
+
+Snake.prototype.setDirection = function (direction) {
+  this.direction = direction;
+};
+
+Snake.prototype.init = function (x, y) {
+  this.nodes.push ({x: x, y: y});
 };
 
 /**
@@ -107,46 +198,35 @@ Game.prototype.movePlayers = function () {
  *
  *
  */
-var Player = function (client, name, resolution) {
-  this.id         = playersCount++;
+var Player = function (client, name, resolution, game) {
+  this.id         = playersCount++; // Client side ID
   this.client     = client;
   this.name       = name;
   this.resolution = resolution;
-  this.snake      = null;
-  this.game       = null;
+  this.game       = game;
 
   console.log ('Yeah, new player "'+this.name+'"');
 };
 
-Player.prototype.setDirection = function (direction) {
-  this.snake.direction = direction;
+Player.prototype = new Snake (null); // A player is a snake
+
+Player.prototype.moveHead = function (nextMove) {
+  this.game.grid.set (nextMove.x, nextMove.y, this);
+  this.nodes.push (nextMove);
+  return {playerId: this.id, action: 'addNode', pt: nextMove};
 };
 
-Player.prototype.move = function () {
-  //this.snake.detectColision(); TODO
-
-  this.client.send ({move: this.snake.direction});
-};
-
-Player.prototype.announceGame = function (settings) {
-  this.client.send ({getReady: settings});
+Player.prototype.moveTail = function (grid) {
+  if (this.nodes.length == this.size) {
+    var tail = this.nodes.shift();
+    grid.unset (tail.x,tail.y);
+    return {playerId: this.id, action: 'cutTail'};
+  }
 };
 
 /**
- * Snake model
- *
- *
+ * TODO Bot model !
  */
-var Snake = function (grid) {
-  this.nodes     = {};
-  this.grid      = grid;
-  this.direction = 'N';
-
-};
-
-Snake.prototype.detectColision = function (client) {
-};
-
 
 /******************************************************************************
  *
@@ -160,20 +240,19 @@ var Controller = function () {
 
 };
 
-Controller.prototype.newPlayer = function (client, params) {
-  var domain = client.request.headers.origin,
-      player = new Player (client, params.name, params.resolution);
-
-  this.players[client.sessionId] = player;
-
+Controller.prototype.addPlayer = function (client, params) {
+  var domain = client.request.headers.origin;
   if (! this.games[domain])
     this.games[domain] = new Game (domain);
 
-  this.game.addPlayer (player);
+  var player = new Player (client, params.name, params.resolution, this.games[domain]);
+
+  this.players[client.sessionId] = player;
+  this.games[domain].addPlayer (player);
 };
 
-Controller.prototype.setDirection = function (client, params) {
-  this.players[client.sessionId].setDirection (params.direction);
+Controller.prototype.setDirection = function (client, direction) {
+  this.players[client.sessionId].setDirection (direction);
 };
 
 Controller.prototype.disconnect = function (client) {
@@ -200,24 +279,22 @@ Controller.prototype.disconnect = function (client) {
  *
  *****************************************************************************/
 var socket = io.listen(server);
-var controller = new Controller ();
 socket.on('connection', function(client){
+  var ctlr = new Controller ();
 
   client.on('message', function(message){
 
     Object.keys(message).forEach(function (command) {
       console.log ("New command "+command);
       console.log (message[command]);
-      if (Controller.prototype[command])
-        Controller.prototype[command](client, message[command]);
+      if (typeof ctlr[command] == 'function')
+        ctlr[command](client, message[command]);
       else
         console.log ('Command '+command+'does not exist.');
     });
 
-    client.broadcast(direction);
-
   });
   client.on('disconnect', function(){
-    Controller.disconnect(client);
+    // FIXME ctlr.disconnect(client);
   });
 });
