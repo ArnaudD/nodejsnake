@@ -22,14 +22,21 @@ playersCount = 1; # TODO find something more elegant !
 #------------------------------------------------------------------------------
 class Grid
   constructor: () ->
-    width  = 0
-    height = 0
-    map    = []
+    @width  = 0
+    @height = 0
+    @map    = []
+
+  clear: () ->
+    @map = []
 
   init: (@width, @height) ->
-    @map = ((null for num in [0..@height]) for num in [0..@width])
+    for x in [0...@width]
+      @map[x] = []
+      for y in [0...@height]
+        @map[x][y] = null
+    true
 
-  isFree: (x, y) ->
+  isset: (x, y) ->
     (@map[x][y] == null)
 
   set: (x, y, player) ->
@@ -38,14 +45,13 @@ class Grid
   unset: (x, y) ->
     @map[x][y] = null
 
-
 #------------------------------------------------------------------------------
 # Game model
 #------------------------------------------------------------------------------
-class Game 
+class Game
   constructor: (@host) ->
     @players = []
-    @speed   = 700
+    @speed   = 300
     @grid    = new Grid
     @loop    = null
 
@@ -87,11 +93,10 @@ class Game
     
     # Initialize the grid
     @grid.init width, height
-    
+
     # Put everyone on the grid
     i = 1
     spaceBetweenSnakes = Math.floor (width / (@players.length + 1))
-    console.log 'space : '+spaceBetweenSnakes
     for player in @players
       player.init i * spaceBetweenSnakes, Math.floor (height/ 2)
       i++
@@ -99,11 +104,6 @@ class Game
     # broadcast positions
     for player in @players
       @broadcast {addPlayer: {
-        id: player.id
-        name: player.name
-        position: player.getHead()
-      }}
-      console.log {addPlayer: {
         id: player.id
         name: player.name
         position: player.getHead()
@@ -123,7 +123,7 @@ class Game
 
   start: () ->
     # launch the main loop
-    @loop = setInterval (() -> @movePlayers()) , @speed # CHECKKKKKKKK @ et 
+    @loop = setInterval (() => @movePlayers()) , @speed
     
   movePlayers: () ->
     updates = []
@@ -136,10 +136,9 @@ class Game
     # Then move their head
     for player in @players
       nextMove = player.getNextMoveCoordinate()
-      if @grid.isFree nextMove.x, nextMove.y
+      if @grid.isset nextMove.x, nextMove.y
         updates.push (player.moveHead(nextMove))
     
-    #console.log (updates)
     # Send direction to everyone in the game
     @broadcast update: updates
     
@@ -189,8 +188,8 @@ class Snake
 #------------------------------------------------------------------------------
 # Snake model
 #------------------------------------------------------------------------------
-class Player extends snake
-  constructor: (client, name, resolution, game) ->
+class Player extends Snake
+  constructor: (@client, @name, @resolution, game) ->
     @id         = playersCount++; # Client side ID
     console.log ('Yeah, new player "'+@name+'"')
     super game
@@ -199,7 +198,6 @@ class Player extends snake
     @moveHead ({x: x, y: y})
 
   moveHead: (nextMove) ->
-    console.log {id: @id, lastNode: @getHead(), newNode: nextMove}
     @game.grid.set nextMove.x, nextMove.y, this
     @nodes.push nextMove
     {playerId: @id, action: 'addNode', pt: nextMove}
