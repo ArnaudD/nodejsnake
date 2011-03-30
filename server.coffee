@@ -60,10 +60,10 @@ class Game
   addPlayer: (player) ->
     @players.push player
     
-    #@broadcast ({addPlayer: {
+    #@broadcast [{addPlayer: {
     #  id: player.id,
     #  name: player.name
-    #}})
+    #}}]
 
     # Let's start immediately the game, TEMPORARY
     @getReady() if @players.length > 1 && @loop == null
@@ -78,7 +78,7 @@ class Game
     if @players.length == 0
       clearInterval (@loop)
     else
-      @broadcast {deletePlayer: playerId}
+      @broadcast [{deletePlayer: playerId}]
     
 
   getReady: () ->
@@ -102,15 +102,18 @@ class Game
       i++
     
     # broadcast positions
+    playersPosition = []
     for player in @players
-      @broadcast {addPlayer: {
+      playersPosition.push addPlayer: {
         id: player.id
         name: player.name
         position: player.getHead()
-      }}
-    
+      }
+    console.log playersPosition
+    @broadcast playersPosition
+
     # Announce the game is about to start !
-    @broadcast {getReady: {resolution: {width: width, height: height}}}
+    @broadcast [{getReady: {resolution: {width: width, height: height}}}]
     
     # TODO set countdown !
     
@@ -130,17 +133,18 @@ class Game
     
     # Let's move the tail of each player first
     for player in @players
-      move = player.moveTail (@grid)
-      updates.push (move) if move
+      if player.moveTail (@grid)
+        updates.push cutTail: player.id
     
     # Then move their head
     for player in @players
       nextMove = player.getNextMoveCoordinate()
       if @grid.isset nextMove.x, nextMove.y
-        updates.push (player.moveHead(nextMove))
+        player.moveHead nextMove
+        updates.push addNode: {playerId: player.id, x: nextMove.x, y: nextMove.y}
     
     # Send direction to everyone in the game
-    @broadcast update: updates
+    @broadcast updates
     
 
   broadcast: (message) ->
@@ -164,7 +168,7 @@ class Snake
   getNextMoveCoordinate: () ->
     x = @getHead().x
     y = @getHead().y
-    switch (@direction)
+    switch @direction
       when 'S' then y++
       when 'N' then y--
       when 'E' then x++
@@ -200,13 +204,15 @@ class Player extends Snake
   moveHead: (nextMove) ->
     @game.grid.set nextMove.x, nextMove.y, this
     @nodes.push nextMove
-    {playerId: @id, action: 'addNode', pt: nextMove}
+    true # FIXM
 
   moveTail: (grid) ->
     if @nodes.length == @size
       tail = @nodes.shift()
-      grid.unset tail.x,tail.y
-      {playerId: @id, action: 'cutTail'}
+      grid.unset tail.x, tail.y
+      true
+    else
+      false
     
 
 # 

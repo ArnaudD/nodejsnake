@@ -1,6 +1,4 @@
 
-nodeSize   = 10 # Size (in px) of one snake node
-
 ###############################################################################
 #
 # Model classes
@@ -20,26 +18,36 @@ class Snake
     @nodes.push node
 
   cutTail: () ->
-    deletedNode = @nodes.shift()
-    deletedNode.animate {opacity: 0}, 200, () ->
-      @remove()
+    @nodes.shift()
+
 
 #------------------------------------------------------------------------------
 # Canvas Model
 #------------------------------------------------------------------------------
 
-class SnakeCanvas extends Raphael
+class SnakeCanvas
   constructor: () ->
-    super 0, 0, document.width, document.height
-    @canvas.id = 'njsGrid'
+    @raphael = Raphael 0, 0, document.width, document.height
+    @raphael.canvas.id = 'njsGrid'
+    @nodeSize = 10
+    @resolution = # grid resolution
+      height: Math.floor document.height / (@nodeSize + 1)
+      width:  Math.floor document.width / (@nodeSize + 1)
+
+    # TODO : adjust node size to meet the minimum resolution
 
   addNode: (x, y, color) ->
     # TODO center the grid
-    x = (x * (nodeSize+1)) + 1
-    y = (y * (nodeSize+1)) + 1
-    node = @rect x, y, nodeSize, nodeSize
+    x = (x * (@nodeSize+1)) + 1
+    y = (y * (@nodeSize+1)) + 1
+    node = @canvas.rect x, y, @nodeSize, @nodeSize
     node.attr fill: color, stroke: 'none'
     node.animate fill: '#FFF', 1000
+
+  removeNode: (node) ->
+    node.animate {opacity: 0}, 200, () ->
+      @remove()
+
 
 ###############################################################################
 #
@@ -50,22 +58,17 @@ class SnakeCanvas extends Raphael
 class Controller
   constructor: (@socket) ->
     @players = {}
-    @name = prompt 'What\'s your name ?'
-    @resolution =
-      height: Math.floor document.height / (nodeSize + 1)
-      width:  Math.floor document.width / (nodeSize + 1)
     @canvas = new SnakeCanvas
     @gridSize = {}
-    @players = {}
-
     @direction = 'N'
 
     # Init keypress handler
-    ($ 'body').keydown (e) => @handleKeyPressed e
+    $('body').keydown (e) => @handleKeyPressed e
 
     # Server message handler
     socket.on 'message', (message) => @handleMessageReceived message
-    socket.on 'connect_failed', () => @handleConnectionFailed
+    socket.on 'connect',        () => @handleConnectionSucceed()
+    socket.on 'connect_failed', () => @handleConnectionFailed()
 
   # event handlers >
 
@@ -74,16 +77,15 @@ class Controller
 
   handleConnectionSucceed: () ->
     # Notify server of the new player
-    @socket.send addPlayer: {name: @name, resolution: @resolution}
+    name = 'AAA' # debug... prompt 'What\'s your name ?'
+    @socket.send addPlayer: {name: name, resolution: @canvas.resolution}
 
-  handleMessageReceived: (message) ->
-    for command, params in message
-      if @[command]?() # if method 'command' exist
-        #console.log ("New command "+command)
-        #console.log (params)
-        @[command](params)
+  handleMessageReceived: (msg) ->
+    for action in Object.keys msg
+      if @[action]?() # if method 'command' exist
+        @[action](msg[action])
       else
-        console.log 'Command '+command+' does not exist.'
+        console.log 'Command '+action+' does not exist.'
 
   handleKeyPressed: (e) ->
     direction = null
@@ -100,7 +102,7 @@ class Controller
   # Server commands >
 
   addPlayer: (player) ->
-    @players[player.id] = new Snake player.id, player.name, @canvas
+    @players[player.id] = new Snake player.id, player.name
 
   getReady: (params) ->
     @gridSize = params.resolution
@@ -111,7 +113,7 @@ class Controller
     @players[node.playerId].addHead square
 
   cutTail: (playerId) ->
-        @players[playerId].cutTail()
+    @canvas.removeNode @players[playerId].cutTail()
 
 ###############################################################################
 #
@@ -120,6 +122,6 @@ class Controller
 ###############################################################################
 
 socket = new io.Socket 'code.didry.info', {port: 8080, rememberTransport: false}
-new Controller socket
+game = new Controller socket
 socket.connect()
 
