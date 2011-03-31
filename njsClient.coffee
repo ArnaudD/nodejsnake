@@ -40,14 +40,24 @@ class SnakeCanvas
     # TODO center the grid
     x = (x * (@nodeSize+1)) + 1
     y = (y * (@nodeSize+1)) + 1
-    node = @canvas.rect x, y, @nodeSize, @nodeSize
+    node = @raphael.rect x, y, @nodeSize, @nodeSize
     node.attr fill: color, stroke: 'none'
-    node.animate fill: '#FFF', 1000
+    node.animate {fill: '#FFF'}, 4000
 
   removeNode: (node) ->
     node.animate {opacity: 0}, 200, () ->
       @remove()
 
+
+#------------------------------------------------------------------------------
+# Canvas Model
+#------------------------------------------------------------------------------
+
+class GameConsole
+  constructor: (@container) ->
+
+  log: (message) ->
+    @container.append '<li>'+message+'</li>'
 
 ###############################################################################
 #
@@ -80,12 +90,12 @@ class Controller
     name = 'AAA' # debug... prompt 'What\'s your name ?'
     @socket.send addPlayer: {name: name, resolution: @canvas.resolution}
 
-  handleMessageReceived: (msg) ->
-    for action in Object.keys msg
-      if @[action]?() # if method 'command' exist
-        @[action](msg[action])
-      else
-        console.log 'Command '+action+' does not exist.'
+  handleMessageReceived: (message) ->
+    for command in Object.keys message
+      console.log '> Command '+command+' received'
+      if @[command]?(message[command]) == undefined # if method 'command' exist, call it
+        console.log '[ERROR] Command "'+command+'" doesn\'t exist.'
+    true
 
   handleKeyPressed: (e) ->
     direction = null
@@ -101,10 +111,12 @@ class Controller
 
   # Server commands >
 
+  getReady: ()
+
   addPlayer: (player) ->
     @players[player.id] = new Snake player.id, player.name
 
-  getReady: (params) ->
+  start: (params) ->
     @gridSize = params.resolution
 
   addNode: (node) ->
