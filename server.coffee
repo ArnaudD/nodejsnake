@@ -53,28 +53,20 @@ class PlayerContainer
   constructor: () ->
     @list = []
     @indexById = {}
-    @indexBySessionId = {}
 
   add: (player) ->
     @list.push player
     @indexById[player.id] = @list.length - 1
-    @indexBySessionId[player.client.sessionId] = @list.length - 1
 
   remove: (player) ->
-      # TODO
+    delete @indexById[player.id]
+    # TODO delete list
 
   get: (id) ->
     if @list[@indexById[id]?]?
       @list[@indexById[id]]
     null
 
-  getBySessionId: (sessionId) ->
-    if @list[@indexBySessionId[sessionId]?]?
-      @list[@indexBySessionId[sessionId]]
-    null
-
-  deleteBySessionId: (sessionId) ->
-    @remove @getBySessionId sessionId
 
 #------------------------------------------------------------------------------
 # Game model
@@ -92,6 +84,8 @@ class Game
   addWatcher: (player) ->
     console.log '> adding watcher '+player.name
     @watchers.add player
+    # send him players details
+    player.send @getPlayersData()
 
   addPlayer: (player) ->
     console.log '> adding player '+player.name
@@ -110,7 +104,7 @@ class Game
       @broadcast [{deletePlayer: playerId}]
     
   isStarted: () ->
-    @countdown == 0
+    @loop != null
 
   countDown: () ->
     @broadcast [{getReady: @countDown}]
@@ -140,7 +134,6 @@ class Game
     # Initialize the grid
     @grid.init width, height
 
-    console.log 3
     # Put everyone on the grid
     i = 1
     spaceBetweenSnakes = Math.floor (width / (@players.list.length + 1))
@@ -148,17 +141,8 @@ class Game
       player.init i * spaceBetweenSnakes, Math.floor (height/ 2)
       i++
     
-    console.log 4
     # broadcast positions
-    playersPosition = []
-    for player in @players.list
-      playersPosition.push addPlayer: {
-        id: player.id
-        name: player.name
-        position: player.getHead()
-      }
-
-    @broadcast playersPosition
+    @broadcast @getPlayersData()
 
     # Announce the game is starting
     @broadcast [{start: {resolution: {width: width, height: height}}}]
@@ -169,10 +153,28 @@ class Game
     clearInterval (@loop)
     # TODO announce 
 
+  getPlayersData: () ->
+    data = []
+    for player in @players.list
+      data.push addPlayer: {
+        id: player.id
+        name: player.name
+        position: player.getHead()
+      }
+    data
+
   movePlayers: () ->
     updates = []
     
     # Let's move the tail of each player first
+    #
+    # TODO TODO TODO TODO TODO
+    #
+    # gérer la taille coté serveur + client (pour les watchers)
+    # permet de réduire la bande passante,
+    # envoyer la taille à l'initialisation
+    # par la suite, n'envoyer que les notifications de changement de taille du serpent
+    #
     for player in @players.list
       if player.moveTail (@grid)
         updates.push cutTail: player.id
@@ -229,7 +231,13 @@ class Snake
     
     return {x: x, y: y}
     
-  setDirection: (@direction) ->
+  setDirection: (direction) ->
+    @direction = direction if (
+      (direction == 'N' && @direction != 'S') ||
+      (direction == 'S' && @direction != 'N') ||
+      (direction == 'E' && @direction != 'W') ||
+      (direction == 'W' && @direction != 'E')
+    )
 
 
 
@@ -278,6 +286,7 @@ class BotPlayer extends Snake
 class Controller
   constructor: (@socket) ->
     @games   = {}
+    @players = {}
     socket.on 'connection', (client) => @handleConnection (client)
 
   # server events >
@@ -288,12 +297,7 @@ class Controller
 
   handleDisconnection: (client) ->
     domain = client.request.headers.origin
-    
-    # Delete the player from the game
-    @games[domain].players.deleteBySessionId client.sessionId
-    @games[domain].watchers.deleteBySessionId client.sessionId
-    
-    # Delete the game if there is no more player
+    @removePlayer client
     if @games[domain].players.length == 0 && @games[domain].watchers.length == 0
       delete @games[domain]
 
@@ -301,7 +305,9 @@ class Controller
     for command in Object.keys message
       console.log "New command "+command
       console.log message[command]
-      if @[command]?(client, message[command]) == undefined # if method 'command' exist, call it
+      if typeof @[command] == 'function'
+        @[command](client, message[command])
+      else
         console.log '[ERROR] Command '+command+' does not exist.'
     true
 
@@ -313,21 +319,33 @@ class Controller
     # create a game if there is none
     if ! @games[domain]
       @games[domain] = new Game domain
+    @games[domain]
     
+  getPlayer: (client) ->
+    if @players[client.sessionId]?
+      @players[client.sessionId]
+    else
+      null
+
+  deletePlayer: (client) ->
+    player = @getPlayer client
+    @getGameForClient (client).delete player.id
+    delete @players[client.sessionId]
+  
 
   # player commands >
 
   addPlayer: (client, params) ->
-    game = @getGameForClient client
-
+    game   = @getGameForClient client
     player = new Player client, params.name, params.resolution, game
+    @players[client.sessionId] = player
     if game.isStarted()
       game.addWatcher player
     else
       game.addPlayer player
 
   setDirection: (client, direction) ->
-    @game.players.getBySessionId (client.setDirection)?.setDirection direction
+    (@getPlayer client)?.setDirection direction
 
 
 

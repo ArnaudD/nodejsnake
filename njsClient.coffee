@@ -111,7 +111,8 @@ class Controller
 
   # Server commands >
 
-  getReady: ()
+  getReady: () ->
+    # show message
 
   addPlayer: (player) ->
     @players[player.id] = new Snake player.id, player.name
