@@ -142,6 +142,8 @@ class Game
       i++
     
     # broadcast positions
+    # TODO TODO TODO TODO TODO
+    # envoyer la taille à l'initialisation
     @broadcast @getPlayersData()
 
     # Announce the game is starting
@@ -165,26 +167,12 @@ class Game
 
   movePlayers: () ->
     updates = []
-    
-    # Let's move the tail of each player first
-    #
-    # TODO TODO TODO TODO TODO
-    #
-    # gérer la taille coté serveur + client (pour les watchers)
-    # permet de réduire la bande passante,
-    # envoyer la taille à l'initialisation
-    # par la suite, n'envoyer que les notifications de changement de taille du serpent
-    #
+
     for player in @players.list
-      if player.moveTail (@grid)
-        updates.push cutTail: player.id
-    
-    # Then move their head
-    for player in @players.list
-      nextMove = player.getNextMoveCoordinate()
-      if @grid.isset nextMove.x, nextMove.y
-        player.moveHead nextMove
-        updates.push addNode: {playerId: player.id, x: nextMove.x, y: nextMove.y}
+        updates = player.move @grid
+        if updates.length > 0
+          # FIXME merge arrays
+          updates.push addNode: {playerId: player.id, x: nextMove.x, y: nextMove.y}
     
     # Send direction to everyone in the game
     @broadcast updates
@@ -253,6 +241,20 @@ class Player extends Snake
   init: (x, y) ->
     @moveHead ({x: x, y: y})
 
+  move: (grid) ->
+    updates = []
+    @grow
+    @moveTail grid
+
+    nextMove = player.getNextMoveCoordinate()
+    if ! grid.isset nextMove.x, nextMove.y
+      @moveHead nextMove
+      updates.push move: {playerId: @id, x: nextMove.x, y: nextMove.y}
+    else
+      updates.push kill: {playerId: @id}
+
+    updates
+
   moveHead: (nextMove) ->
     @game.grid.set nextMove.x, nextMove.y, this
     @nodes.push nextMove
@@ -265,6 +267,9 @@ class Player extends Snake
       true
     else
       false
+
+  grow: () ->
+    # TODO
     
   send: (message) ->
     @client.send message

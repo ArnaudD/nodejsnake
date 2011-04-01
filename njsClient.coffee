@@ -10,15 +10,21 @@
 #------------------------------------------------------------------------------
 
 class Snake
-  constructor: (id, name) ->
+  constructor: (@id, @name, @size = 0) ->
     @nodes = [] # Raphael nodes
     @color = '#0F0'
 
   addHead: (node) ->
     @nodes.push node
+    if @size > @node.length
+      @cutTail()
 
   cutTail: () ->
-    @nodes.shift()
+    node = @nodes.shift()
+    node.animate {opacity: 0}, 200, () -> @remove()
+
+  grow: (size = 1) ->
+    @size += size
 
 
 #------------------------------------------------------------------------------
@@ -44,13 +50,8 @@ class SnakeCanvas
     node.attr fill: color, stroke: 'none'
     node.animate {fill: '#FFF'}, 4000
 
-  removeNode: (node) ->
-    node.animate {opacity: 0}, 200, () ->
-      @remove()
-
-
 #------------------------------------------------------------------------------
-# Canvas Model
+# Game Console Model
 #------------------------------------------------------------------------------
 
 class GameConsole
@@ -115,7 +116,7 @@ class Controller
     # show message
 
   addPlayer: (player) ->
-    @players[player.id] = new Snake player.id, player.name
+    @players[player.id] = new Snake @canvas, player.id, player.name, player.size
 
   start: (params) ->
     @gridSize = params.resolution
@@ -125,8 +126,8 @@ class Controller
     square = @canvas.addNode node.x, node.y, color
     @players[node.playerId].addHead square
 
-  cutTail: (playerId) ->
-    @canvas.removeNode @players[playerId].cutTail()
+  grow: (params) ->
+    @canvas.removeNode @players[paramsplayerId].grow(params.size)
 
 ###############################################################################
 #
