@@ -24,11 +24,24 @@ class Snake
   cutTail: () ->
     node = @nodes.shift()
     node.remove()
-    #node.animate {opacity: 0}, 200, () -> @remove()
+    node.animate {opacity: 0}, 200, () -> @remove()
     @
 
   grow: (size = 1) ->
     @size += size
+
+  kill: () ->
+    for node in @nodes
+      console.log node
+      node.attr 'color', '#F00'
+      node.animate {
+        opacity: 0
+        x: Math.random() * 100 - 50 + node.attr('x')
+        y: Math.random() * 100 - 50 + node.attr('y')
+        easing: '>'
+      }, 500 , () -> @remove()
+    @nodes = []
+      
 
 
 #------------------------------------------------------------------------------
@@ -132,9 +145,10 @@ class Controller
     @
 
   grow: (params) ->
-    @canvas.removeNode @players[paramsplayerId].grow(params.size)
+    @canvas.removeNode @players[params.playerId].grow(params.size)
 
   kill: (playerId) ->
+    @players[playerId].kill()
     # TODO
 
 ###############################################################################
