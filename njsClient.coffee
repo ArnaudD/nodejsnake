@@ -10,18 +10,22 @@
 #------------------------------------------------------------------------------
 
 class Snake
-  constructor: (@id, @name, @size = 0) ->
+  constructor: (@id, @name, size = 0) ->
     @nodes = [] # Raphael nodes
     @color = '#0F0'
+    @size = parseInt size
 
   addHead: (node) ->
     @nodes.push node
-    if @size > @node.length
+    if @nodes.length > @size
       @cutTail()
+    @
 
   cutTail: () ->
     node = @nodes.shift()
-    node.animate {opacity: 0}, 200, () -> @remove()
+    node.remove()
+    #node.animate {opacity: 0}, 200, () -> @remove()
+    @
 
   grow: (size = 1) ->
     @size += size
@@ -116,18 +120,22 @@ class Controller
     # show message
 
   addPlayer: (player) ->
-    @players[player.id] = new Snake @canvas, player.id, player.name, player.size
+    @players[player.id] = new Snake player.id, player.name, player.size
 
   start: (params) ->
     @gridSize = params.resolution
 
-  addNode: (node) ->
+  move: (node) ->
     color = '#0F0' # TODO
     square = @canvas.addNode node.x, node.y, color
     @players[node.playerId].addHead square
+    @
 
   grow: (params) ->
     @canvas.removeNode @players[paramsplayerId].grow(params.size)
+
+  kill: (playerId) ->
+    # TODO
 
 ###############################################################################
 #

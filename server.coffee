@@ -37,7 +37,7 @@ class Grid
     true
 
   isset: (x, y) ->
-    (@map[x][y] == null)
+    (@map[x][y] != null)
 
   set: (x, y, player) ->
     @map[x][y] = player
@@ -141,9 +141,7 @@ class Game
       player.init i * spaceBetweenSnakes, Math.floor (height/ 2)
       i++
     
-    # broadcast positions
-    # TODO TODO TODO TODO TODO
-    # envoyer la taille à l'initialisation
+    # broadcast players infos
     @broadcast @getPlayersData()
 
     # Announce the game is starting
@@ -162,6 +160,7 @@ class Game
         id: player.id
         name: player.name
         position: player.getHead()
+        size: player.size
       }
     data
 
@@ -169,10 +168,9 @@ class Game
     updates = []
 
     for player in @players.list
-        updates = player.move @grid
-        if updates.length > 0
-          # FIXME merge arrays
-          updates.push addNode: {playerId: player.id, x: nextMove.x, y: nextMove.y}
+        playerUpdates = player.move @grid
+        if playerUpdates.length > 0
+          updates = updates.concat playerUpdates
     
     # Send direction to everyone in the game
     @broadcast updates
@@ -235,7 +233,7 @@ class Snake
 class Player extends Snake
   constructor: (@client, @name, @resolution, game) ->
     @id         = playersCount++; # Client side ID
-    console.log ('Yeah, new player "'+@name+'"')
+    console.log 'Yeah, new player "'+@name+'"'
     super game
     
   init: (x, y) ->
@@ -246,12 +244,12 @@ class Player extends Snake
     @grow
     @moveTail grid
 
-    nextMove = player.getNextMoveCoordinate()
+    nextMove = @getNextMoveCoordinate()
     if ! grid.isset nextMove.x, nextMove.y
       @moveHead nextMove
       updates.push move: {playerId: @id, x: nextMove.x, y: nextMove.y}
     else
-      updates.push kill: {playerId: @id}
+      updates.push kill: @id
 
     updates
 
@@ -298,7 +296,7 @@ class Controller
 
   handleConnection: (client) ->
     client.on 'message',    (message) => @handleMessage       client, message
-    client.on 'disconnect', (client)  => @handleDisconnection client
+    # client.on 'disconnect', (client)  => @handleDisconnection client
 
   handleDisconnection: (client) ->
     domain = client.request.headers.origin
@@ -334,7 +332,7 @@ class Controller
 
   deletePlayer: (client) ->
     player = @getPlayer client
-    @getGameForClient (client).delete player.id
+    (@getGameForClient client).delete player.id
     delete @players[client.sessionId]
   
 
