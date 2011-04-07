@@ -131,12 +131,19 @@ class Controller
 
   getReady: () ->
     # show message
+    @
 
   addPlayer: (player) ->
     @players[player.id] = new Snake player.id, player.name, player.size
 
   start: (params) ->
+    # TODO init the grid
     @gridSize = params.resolution
+
+  stop: (params) ->
+    @players = {}
+    # TODO clear the board
+    @
 
   move: (node) ->
     color = '#0F0' # TODO

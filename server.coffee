@@ -59,8 +59,8 @@ class PlayerContainer
     @indexById[player.id] = @list.length - 1
 
   remove: (player) ->
-    index = @indexById[player.id]
-    @list = @list.splice index, 1
+    idx = @indexById[player.id]
+    @list.splice idx, 1
     delete @indexById[player.id]
 
   get: (id) ->
@@ -81,16 +81,21 @@ class Game
     @grid      = new Grid
     @loop      = null
     @countdown = 30 # countdown > 0 : waiting for players, countdown == 0 : playing
+    @countdownLoop = null
     console.log 'Yeah, new game at '+@host
 
+  #
   # Adds a watcher to the game
+  #
   addWatcher: (player) ->
     console.log '> adding watcher '+player.name
     @watchers.add player
     # send him players details
     player.send @getPlayersData()
 
+  #
   # Adds a player to the game
+  #
   addPlayer: (player) ->
     console.log '> adding player '+player.name
     @players.add player
@@ -98,47 +103,64 @@ class Game
     # debug: start at first player, next ones will be watching
     @start(); return
 
-    if @players.players.length > 2 # the game can now begin
+    if @players.list.length > 2 # the game can now begin
       @getReady()
 
+  #
   # Called when someone is disconnected
+  #
   deletePlayer: (player) ->
+    @broadcast kill: player.id
     @players.remove player
-    if @players.list.length == 0
-    else
-      @broadcast [{deletePlayer: playerId}]
 
+  #
   # Called when someone is killed
   # Put the player in the watchers list
+  #
   killPlayer: (player) ->
-    @players.remove player
     @watchers.add player
+    @deletePlayer player
+
+    if @players.list.length == 0
+      @stop()
+      @getReady() # ... for the next round
     
+  #
   # Tells if the game has already started
+  #
   isStarted: () ->
     @loop != null
 
-  # Countdown callback called each seconds before the begining of the game
-  countDown: () ->
-    @broadcast [{getReady: @countDown}]
-    @countDown--
+  #
+  # Method called every second before the begining of the countdown
+  #
+  getReady: () ->
+    if @countdownLoop == null
+      # init the countdown
+      @countdown = 2 # FIXME debug # restart countdown
+      @countdownLoop = setInterval (() => @getReady()) , 1000
+      @players = @watchers
+      @watchers = new PlayerContainer()
 
-    if @countDown < 0
-      if @players.list.length < 2
+    console.log '> the game is starting in '+@countdown+'s'
+    @broadcast getReady: @countdown
+    @countdown--
+
+    if @countdown < 0
+      if @players.list.length < 1 # FIXME DEBUG
         @countdown = 30 # restart countdown
       else
+        clearInterval @countdownLoop
+        @countdownLoop = null
         @start()
-
-  # Method called before the begining of the countdown
-  getReady: () ->
-    # start countdown
-    @loop = setInterval (() => @countdown()) , 1000
     
+  #
   # Start a game
   # Called at the end of the countdown to initialize the grid size, 
   # and the players positions, and start the main loop
+  #
   start: () ->
-    console.log '> starting game'
+    console.log '> starting game, number of players : '+@players.list.length
     # find the best best resolution
     width = 999999
     height = 999999
@@ -149,12 +171,14 @@ class Game
     # TODO : check if the grid size isn't too small
     
     # Initialize the grid
+    @grid.clear()
     @grid.init width, height
 
     # Put everyone on the grid
     i = 1
     spaceBetweenSnakes = Math.floor (width / (@players.list.length + 1))
     for player in @players.list
+      player.isAlive = true # just to make sure
       player.init i * spaceBetweenSnakes, Math.floor (height/ 2)
       i++
     
@@ -162,16 +186,38 @@ class Game
     @broadcast @getPlayersData()
 
     # Announce the game is starting
-    @broadcast [{start: {resolution: {width: width, height: height}}}]
+    @broadcast start: {resolution: {width: width, height: height}}
     
     @loop = setInterval (() => @movePlayers()) , @speed
 
+  #
+  # Game main loop
+  #
+  movePlayers: () ->
+    updates = []
+    i = @players.list.length
+    while i--
+      player = @players.list[i]
+      player.move @grid
+      if ! player.isAlive
+        @killPlayer player
+      else
+        updates.push move: {playerId: player.id, x: player.getHead().x, y: player.getHead().y}
+    
+    # Send direction to everyone in the game
+    @broadcast updates
+    
+  #
   # Called at the end of the game to stop the main loop
+  #
   stop: () ->
+    @broadcast stop: 0
     clearInterval (@loop)
     # TODO announce 
 
+  #
   # Returns players metadata (id, name, position, site, etc)
+  #
   getPlayersData: () ->
     data = []
     for player in @players.list
@@ -183,20 +229,9 @@ class Game
       }
     data
 
-  # Game main loop
-  movePlayers: () ->
-    updates = []
-    for player in @players.list
-        playerUpdates = player.move @grid
-        if playerUpdates.length > 0
-          updates = updates.concat playerUpdates
-        if ! player.isAlive
-          @killPlayer player # FIXME FIXME FIXME
-    
-    # Send direction to everyone in the game
-    @broadcast updates
-    
+  #
   # Utility function to send a message to every player (and watcher) of this game
+  #
   broadcast: (message) ->
     for player in @players.list
       player.send message
@@ -251,20 +286,13 @@ class Snake
     @moveHead ({x: x, y: y})
 
   move: (grid) ->
-    updates = []
     @grow
-
     nextMove = @getNextMoveCoordinate()
     if ! grid.isset nextMove.x, nextMove.y
       @moveHead nextMove
-      updates.push move: {playerId: @id, x: nextMove.x, y: nextMove.y}
+      @moveTail grid
     else
-      updates.push kill: @id
       @isAlive = false
-
-    @moveTail grid
-
-    updates
 
   moveHead: (nextMove) ->
     @game.grid.set nextMove.x, nextMove.y, this
@@ -355,9 +383,15 @@ class Controller
 
   deletePlayer: (client) ->
     player = @getPlayer client
-    (@getGameForClient client).delete player.id
+    game = @getGameForClient client
+    game.deletePlayer player
     delete @players[client.sessionId]
-  
+
+    if @game.players.list.length == 0
+      @deleteGame game
+
+  deleteGame: (game) ->
+    delete @games[game.host]
 
   # player commands >
 
