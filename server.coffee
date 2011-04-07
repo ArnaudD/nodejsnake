@@ -1,12 +1,11 @@
 
-http         = require 'http'
-io           = require 'socket.io'
+path     = require 'path'
+http     = require 'http'
+io       = require 'socket.io'
+paperboy = require 'paperboy'
 
-server = http.createServer (req, res) ->
- res.writeHead 200, {'Content-Type': 'text/html'}
- res.end '<h1>Hello from the websocket server !</h1>'
-
-server.listen 8080
+WEBROOT  = path.join(path.dirname(__filename), 'public')
+PORT     = 80
 
 playersCount = 1; # TODO find something more elegant !
 
@@ -414,7 +413,22 @@ class Controller
 # Dispatcher
 #
 ###############################################################################
+
+
+server = http.createServer (req, res) ->
+  d = paperboy.deliver WEBROOT, req, res
+  d.before () ->
+      console.log 'Received Request'
+  d.error (statCode, msg) ->
+      res.writeHead statCode, {'Content-Type': 'text/plain'}
+      res.end "Error " + statCode
+  d.otherwise (err) ->
+      res.writeHead 404, {'Content-Type': 'text/plain'}
+      res.end "Error 404: File not found"
+
+server.listen PORT
 socket = io.listen server
+
 ctlr = new Controller socket
 
 

@@ -164,7 +164,7 @@ class Controller
 #
 ###############################################################################
 
-socket = new io.Socket 'code.didry.info', {port: 8080, rememberTransport: false}
+socket = new io.Socket 'code.didry.info', {port: 80, rememberTransport: false}
 game = new Controller socket
 socket.connect()
 
