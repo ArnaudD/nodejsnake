@@ -164,7 +164,7 @@ class Controller
 #
 ###############################################################################
 
-socket = new io.Socket document.location.hosname., {port: 80, rememberTransport: false}
+socket = new io.Socket document.location.hosname, {port: 80, rememberTransport: false}
 game = new Controller socket
 socket.connect()
 
